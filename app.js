@@ -1,6 +1,7 @@
-﻿const API_KEY = "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"; // Вставьте ключ Groq сюда
+const API_KEY = "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"; // Вставьте ключ Groq сюда
 const GOOGLE_CLIENT_ID = "489570663546-fr6r6vccuu2nrl4k8f88m2lncm6c60cv.apps.googleusercontent.com"; // Вставьте Google Client ID сюда
 const ASSISTANT_NAME = "Fley";
+const AIRFORCE_API_KEY = "sk-air-RDQqozmszW5DmC9RM4gBKfed1oUVMwVQJKR46QgYxVhSl4qz5OJaNFg17IFnNlBS"; // Вставьте ключ Airforce сюда
 
 const AIRFORCE_IMAGE_MODEL = "grok-imagine";
 const REQUEST_TIMEOUT_MS = 30000;
@@ -253,7 +254,7 @@ const I18N = {
     weather_updated: "Погода обновлена",
     weather_error: "Ошибка загрузки",
     weather_error_status: "Ошибка погоды",
-    image_need_key: "Нужен AIRFORCE_API_KEY в .env или server.js.",
+    image_need_key: "Нужен AIRFORCE_API_KEY в app.js.",
     image_ready: "Готово к генерации через Grok Imagine (api.airforce).",
     image_prompt_needed: "Введите описание изображения.",
     image_sending: "Генерируется",
@@ -385,7 +386,7 @@ const I18N = {
     weather_updated: "Погоду оновлено",
     weather_error: "Помилка завантаження",
     weather_error_status: "Помилка погоди",
-    image_need_key: "Потрібен AIRFORCE_API_KEY у .env або server.js.",
+    image_need_key: "Потрібен AIRFORCE_API_KEY у app.js.",
     image_ready: "Готово до генерації через Grok Imagine (api.airforce).",
     image_prompt_needed: "Введіть опис зображення.",
     image_sending: "Генерується",
@@ -517,7 +518,7 @@ const I18N = {
     weather_updated: "Weather updated",
     weather_error: "Load error",
     weather_error_status: "Weather error",
-    image_need_key: "Set AIRFORCE_API_KEY in .env or server.js.",
+    image_need_key: "Set AIRFORCE_API_KEY in app.js.",
     image_ready: "Ready to generate via Grok Imagine (api.airforce).",
     image_prompt_needed: "Enter an image description.",
     image_sending: "Generating",
@@ -1833,7 +1834,7 @@ function hasKey() {
 }
 
 function hasImageKey() {
-  return true;
+  return AIRFORCE_API_KEY && AIRFORCE_API_KEY !== "VITE_REPLACE_ME";
 }
 
 function setImageStatusText(text, loading = false) {
@@ -2713,11 +2714,17 @@ function pickBestGeoResult(results, query) {
 
 async function requestAirforceImage(payload) {
   return fetchWithTimeout(
-    "/api/airforce-image",
+    "https://api.airforce/v1/imagine",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      headers: {
+        Authorization: `Bearer ${AIRFORCE_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: payload?.model || AIRFORCE_IMAGE_MODEL,
+        prompt: payload?.prompt || ""
+      })
     },
     REQUEST_TIMEOUT_MS + 15000
   );
@@ -2755,7 +2762,10 @@ async function generateImage() {
 
     if (!response.ok) {
       const rawError = (await response.text()).trim();
-      const missingKey = /Missing AIRFORCE_API_KEY/i.test(rawError);
+      const missingKey =
+        response.status === 401 ||
+        response.status === 403 ||
+        /Missing AIRFORCE_API_KEY|invalid api key|unauthorized|forbidden/i.test(rawError);
       const isLimit = response.status === 402 || response.status === 429;
       const retryAfterHeader = Number.parseInt(response.headers.get("retry-after") || "0", 10);
       const secFromHeader = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : 20;
@@ -2926,3 +2936,4 @@ function loadUser() {
     updateAccountAvatar("");
   }
 }
+
