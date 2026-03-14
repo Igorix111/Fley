@@ -1,4 +1,4 @@
-﻿const API_KEY = "const API_KEY = "PLACEHOLDER";"; // Вставьте ключ Groq сюда
+﻿const API_KEY = "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"; // Вставьте ключ Groq сюда
 const GOOGLE_CLIENT_ID = "489570663546-fr6r6vccuu2nrl4k8f88m2lncm6c60cv.apps.googleusercontent.com"; // Вставьте Google Client ID сюда
 const ASSISTANT_NAME = "Fley";
 
