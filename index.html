@@ -1,0 +1,280 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fley — Live AI Chat</title>
+    <meta name="description" content="Fley — быстрый ИИ-чат с real-time данными. Ключ Groq вставляется в код. Дизайн в стиле ChatGPT, но ярче и современнее." />
+    <link rel="icon" type="image/png" href="assets/fley-logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <div class="brand-row">
+            <div class="brand-logo" aria-hidden="true">
+              <img src="assets/fley-logo.png" alt="" />
+            </div>
+            <div class="brand-text">Fley</div>
+            <button class="brand-toggle" id="sidebarDockToggle" type="button" aria-label="Показать или скрыть панель" aria-expanded="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3.5" y="4" width="17" height="16" rx="4"></rect>
+                <path d="M10.5 4v16"></path>
+              </svg>
+            </button>
+            <button class="sidebar-close" id="sidebarClose" type="button" aria-label="Закрыть меню">✕</button>
+          </div>
+          <button class="new-chat" id="newChat">Новый чат</button>
+          <div class="search">
+            <input id="chatSearch" type="text" placeholder="Шукати в чатах" />
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-section-title" id="recentTitle">Недавні</div>
+          <div class="chat-list" id="chatList"></div>
+          <button class="side-nav-btn" id="imagesNavBtn" type="button">Изображения</button>
+        </div>
+
+        <div class="side-section">
+          <div class="side-section-title" id="settingsTitle">Настройки</div>
+          <div class="settings">
+            <label for="model" id="modelLabel">Модель</label>
+            <select id="model" class="model-select-native">
+              <option value="llama-3.1-8b-instant">Fley v1 - быстрее</option>
+              <option value="llama-3.3-70b-versatile">Fley v2 - умнее</option>
+            </select>
+            <div class="model-switch" id="modelSwitch">
+              <button class="model-switch-btn active" data-model="llama-3.1-8b-instant" type="button">Fley v1 - быстрее</button>
+              <button class="model-switch-btn" data-model="llama-3.3-70b-versatile" type="button">Fley v2 - умнее</button>
+            </div>
+            <label for="system" id="systemLabel">Системная инструкция</label>
+            <textarea id="system" rows="3"></textarea>
+            <label for="lang" id="langLabel">Язык</label>
+            <select id="lang" class="lang-select-native">
+              <option value="ru">Русский</option>
+              <option value="uk">Українська</option>
+              <option value="en">English</option>
+            </select>
+            <div class="lang-switch" id="langSwitch">
+              <button class="lang-switch-toggle" id="langSwitchToggle" type="button" aria-expanded="false">
+                <span id="langSwitchCurrent">Русский</span>
+                <span class="lang-switch-arrow" aria-hidden="true">▾</span>
+              </button>
+              <div class="lang-switch-menu" id="langSwitchMenu">
+                <button class="lang-switch-btn active" data-lang="ru" type="button">Русский</button>
+                <button class="lang-switch-btn" data-lang="uk" type="button">Українська</button>
+                <button class="lang-switch-btn" data-lang="en" type="button">English</button>
+              </div>
+            </div>
+            <label for="taskProfile" id="taskProfileLabel">Профиль задач</label>
+            <select id="taskProfile" class="task-profile-native">
+              <option value="general">Универсальный</option>
+              <option value="code">Код</option>
+              <option value="study">Учеба</option>
+              <option value="texts">Тексты</option>
+              <option value="translation">Перевод</option>
+            </select>
+            <div class="task-switch" id="taskSwitch">
+              <button class="task-switch-toggle" id="taskSwitchToggle" type="button" aria-expanded="false">
+                <span id="taskSwitchCurrent">Универсальный</span>
+                <span class="task-switch-arrow" aria-hidden="true">▾</span>
+              </button>
+              <div class="task-switch-menu" id="taskSwitchMenu">
+                <button class="task-switch-btn active" data-task="general" type="button">Универсальный</button>
+                <button class="task-switch-btn" data-task="code" type="button">Код</button>
+                <button class="task-switch-btn" data-task="study" type="button">Учёба</button>
+                <button class="task-switch-btn" data-task="texts" type="button">Тексты</button>
+                <button class="task-switch-btn" data-task="translation" type="button">Перевод</button>
+              </div>
+            </div>
+            <label class="toggle-row">
+              <input id="autoSpeakToggle" type="checkbox" />
+              <span id="autoSpeakLabel">Озвучка ответов</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-section-title" id="liveTitle">Live</div>
+          <div class="live-card">
+            <div class="live-row">
+              <span id="liveLabelTime">Время</span>
+              <strong id="liveTime">--:--</strong>
+            </div>
+            <div class="live-row">
+              <span id="liveLabelDate">Дата</span>
+              <span id="liveDate">--</span>
+            </div>
+            <div class="live-row">
+              <span id="liveLabelYear">Год</span>
+              <span id="liveYear">----</span>
+            </div>
+            <div class="live-row live-emphasis">
+              <span id="liveLabelCondition">Состояние</span>
+              <span id="liveCondition">—</span>
+            </div>
+            <div class="live-row live-meta">
+              <span id="liveLabelUpdated">Обновлено</span>
+              <span id="liveUpdated">—</span>
+            </div>
+            <div class="weather">
+              <input id="cityInput" type="text" placeholder="Город или страна" />
+              <button id="weatherBtn" type="button">Погода</button>
+              <div id="weatherResult">Погода не загружена</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <span id="counter">Сообщения: 0 / 50</span>
+          <span class="dot"></span>
+          <span id="limitNote">лимит обновляется каждый час</span>
+        </div>
+      </aside>
+      <button class="sidebar-overlay" id="sidebarOverlay" type="button" aria-label="Закрыть меню"></button>
+
+      <main class="main view-chat">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Показать или скрыть панель" aria-expanded="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3.5" y="4" width="17" height="16" rx="4"></rect>
+                <path d="M10.5 4v16"></path>
+              </svg>
+            </button>
+            <div class="title">
+              <img class="title-logo" src="assets/fley-logo.png" alt="" aria-hidden="true" />
+              <span>Fley</span>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <div class="status" id="status">Готов</div>
+            <div class="account">
+              <button class="account-toggle" id="accountToggle" type="button" aria-label="Аккаунт" aria-expanded="false">
+                <span id="accountAvatar">G</span>
+              </button>
+              <div class="account-menu hidden" id="accountMenu">
+                <div class="signin" id="g_id_signin"></div>
+                <div class="user-pill hidden" id="userPill">
+                  <span id="userName">Гость</span>
+                  <button id="logoutBtn" type="button">Выйти</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section class="welcome" id="welcome">
+          <h1 class="hero-title" id="heroTitle">Над чем ты работаешь?</h1>
+          <div class="welcome-title" id="welcomeTitle">Подсказки для старта</div>
+          <div class="chips">
+            <button class="chip" data-key="launch" data-prompt="Составь современное резюме на позицию Frontend разработчика в 2026 году: структура, формулировки достижений и блок навыков.">Резюме 2026</button>
+            <button class="chip" data-key="landing" data-prompt="Сделай контент-план на 7 дней для Telegram-канала про ИИ: тема дня, формат поста и короткий хук.">Контент-план</button>
+            <button class="chip" data-key="time" data-prompt="Помоги распланировать мой день: учеба, работа и отдых. Дай расписание по времени и 3 приоритета.">План дня</button>
+            <button class="chip" data-key="youtube" data-prompt="Придумай 10 актуальных идей для YouTube про нейросети и AI-инструменты с названиями роликов.">YouTube идеи</button>
+            <button class="chip" data-key="instagram" data-prompt="Напиши продающий пост для Instagram о запуске нового продукта: заголовок, оффер, CTA и 5 хештегов.">Продажный пост</button>
+          </div>
+        </section>
+
+        <section class="conversation">
+          <div class="messages" id="messages">
+            <div class="message assistant">
+              <div class="bubble">Привет! Напиши запрос и я помогу.</div>
+            </div>
+          </div>
+          <div class="composer">
+            <div class="composer-input-wrap">
+              <div class="composer-tools">
+                <button class="ghost icon-btn" id="voiceBtn" type="button" title="Голосовой ввод" aria-label="Голосовой ввод">
+                  <svg class="icon-svg icon-mic" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="10" rx="3" />
+                    <path d="M6.5 11a5.5 5.5 0 0 0 11 0" />
+                    <path d="M12 16.5V21" />
+                    <path d="M9 21h6" />
+                  </svg>
+                  <svg class="icon-svg icon-stop" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="8" y="8" width="8" height="8" rx="2" />
+                  </svg>
+                </button>
+                <button class="ghost icon-btn" id="speakBtn" type="button" title="Озвучить последний ответ" aria-label="Озвучить последний ответ">
+                  <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 10h4l5-4v12l-5-4H4z" />
+                    <path d="M16.5 9a4 4 0 0 1 0 6" />
+                    <path d="M19 7a7 7 0 0 1 0 10" />
+                  </svg>
+                </button>
+                <input id="fileInput" type="file" accept=".pdf,.docx,.csv,.tsv,.xlsx,.xls,image/*,.txt,.md,.json" multiple hidden />
+              </div>
+              <textarea id="prompt" rows="2" placeholder="Введите сообщение..."></textarea>
+              <div class="attachment-bar" id="attachmentBar"></div>
+            </div>
+            <div class="composer-actions">
+              <button class="ghost icon-btn attach-action" id="attachBtn" type="button" title="Прикрепить файл" aria-label="Прикрепить файл">
+                <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21.44 11.05l-8.49 8.49a5.5 5.5 0 0 1-7.78-7.78l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.49 8.49a1.5 1.5 0 0 1-2.12-2.12l7.78-7.78" />
+                </svg>
+              </button>
+              <button class="ghost stop-btn round-action-btn hidden" id="stop" type="button" aria-label="Стоп" title="Стоп">
+                <span class="stop-square" aria-hidden="true"></span>
+              </button>
+              <button class="cta send-btn round-action-btn" id="send" aria-label="Отправить" title="Отправить">
+                <span class="send-arrow" aria-hidden="true">↑</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="image-panel">
+          <div class="image-head" id="imageHead">Генерация Изображений</div>
+          <div class="image-controls">
+            <input id="imagePrompt" type="text" placeholder="Опишите изображение..." />
+            <select id="imageRatio" class="image-ratio-native">
+              <option value="1:1">1:1</option>
+              <option value="3:2">3:2</option>
+              <option value="2:3">2:3</option>
+            </select>
+            <div class="image-ratio-switch" id="imageRatioSwitch">
+              <button class="image-ratio-toggle" id="imageRatioToggle" type="button" aria-expanded="false">
+                <span id="imageRatioCurrent">1:1</span>
+                <span class="image-ratio-arrow" aria-hidden="true">▾</span>
+              </button>
+              <div class="image-ratio-menu" id="imageRatioMenu">
+                <button class="image-ratio-btn active" data-ratio="1:1" type="button">1:1</button>
+                <button class="image-ratio-btn" data-ratio="3:2" type="button">3:2</button>
+                <button class="image-ratio-btn" data-ratio="2:3" type="button">2:3</button>
+              </div>
+            </div>
+            <button class="ghost image-create-btn" id="generateImage" type="button">Создать</button>
+          </div>
+          <div class="image-status" id="imageStatus">Готово к генерации через Grok Imagine (api.airforce).</div>
+          <div class="image-output" id="imageOutput"></div>
+        </section>
+      </main>
+
+      <div class="image-modal hidden" id="imageModal" role="dialog" aria-modal="true">
+        <div class="image-modal-backdrop" data-close="true"></div>
+        <div class="image-modal-card" role="document">
+          <button class="image-modal-close" id="imageModalClose" type="button" aria-label="Закрыть">✕</button>
+          <img id="imageModalImg" alt="Сгенерированное изображение" />
+          <div class="image-modal-actions">
+            <a class="ghost" id="imageDownload" download>Скачать</a>
+          </div>
+          <div class="image-modal-caption" id="imageModalCaption"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+
