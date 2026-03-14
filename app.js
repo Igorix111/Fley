@@ -254,7 +254,7 @@ const I18N = {
     weather_updated: "Погода обновлена",
     weather_error: "Ошибка загрузки",
     weather_error_status: "Ошибка погоды",
-    image_need_key: "Нужен AIRFORCE_API_KEY в app.js.",
+    image_need_key: "Нужен AIRFORCE_API_KEY в app.js или server.js.",
     image_ready: "Готово к генерации через Grok Imagine (api.airforce).",
     image_prompt_needed: "Введите описание изображения.",
     image_sending: "Генерируется",
@@ -386,7 +386,7 @@ const I18N = {
     weather_updated: "Погоду оновлено",
     weather_error: "Помилка завантаження",
     weather_error_status: "Помилка погоди",
-    image_need_key: "Потрібен AIRFORCE_API_KEY у app.js.",
+    image_need_key: "Потрібен AIRFORCE_API_KEY у app.js або server.js.",
     image_ready: "Готово до генерації через Grok Imagine (api.airforce).",
     image_prompt_needed: "Введіть опис зображення.",
     image_sending: "Генерується",
@@ -518,7 +518,7 @@ const I18N = {
     weather_updated: "Weather updated",
     weather_error: "Load error",
     weather_error_status: "Weather error",
-    image_need_key: "Set AIRFORCE_API_KEY in app.js.",
+    image_need_key: "Set AIRFORCE_API_KEY in app.js or server.js.",
     image_ready: "Ready to generate via Grok Imagine (api.airforce).",
     image_prompt_needed: "Enter an image description.",
     image_sending: "Generating",
@@ -1834,7 +1834,9 @@ function hasKey() {
 }
 
 function hasImageKey() {
-  return AIRFORCE_API_KEY && AIRFORCE_API_KEY !== "VITE_REPLACE_ME";
+  const directKeyReady = AIRFORCE_API_KEY && AIRFORCE_API_KEY !== "VITE_REPLACE_ME";
+  const canUseProxy = window.location.protocol === "http:" || window.location.protocol === "https:";
+  return Boolean(directKeyReady || canUseProxy);
 }
 
 function setImageStatusText(text, loading = false) {
@@ -2713,18 +2715,45 @@ function pickBestGeoResult(results, query) {
 }
 
 async function requestAirforceImage(payload) {
+  const requestBody = {
+    model: payload?.model || AIRFORCE_IMAGE_MODEL,
+    prompt: payload?.prompt || "",
+    aspectRatio: payload?.aspectRatio || "1:1"
+  };
+
+  const directKeyReady = AIRFORCE_API_KEY && AIRFORCE_API_KEY !== "VITE_REPLACE_ME";
+  if (directKeyReady) {
+    try {
+      const directResponse = await fetchWithTimeout(
+        "https://api.airforce/v1/imagine",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${AIRFORCE_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: requestBody.model,
+            prompt: requestBody.prompt
+          })
+        },
+        REQUEST_TIMEOUT_MS + 15000
+      );
+      // Return direct response for normal API outcomes; fallback only for endpoint/cors-like failures.
+      if (directResponse.ok || ![404, 405].includes(directResponse.status)) {
+        return directResponse;
+      }
+    } catch (err) {
+      // Fallback to local proxy when direct request is blocked (CORS/network).
+    }
+  }
+
   return fetchWithTimeout(
-    "https://api.airforce/v1/imagine",
+    "/api/airforce-image",
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${AIRFORCE_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: payload?.model || AIRFORCE_IMAGE_MODEL,
-        prompt: payload?.prompt || ""
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
     },
     REQUEST_TIMEOUT_MS + 15000
   );
@@ -2936,4 +2965,3 @@ function loadUser() {
     updateAccountAvatar("");
   }
 }
-
