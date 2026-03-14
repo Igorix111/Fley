@@ -1,4 +1,4 @@
-﻿const API_KEY = "API_KEY_HERE"; // Вставьте ключ Groq сюда
+const API_KEY = "VITE_REPLACE_ME"; // Вставьте ключ Groq сюда
 const GOOGLE_CLIENT_ID = "489570663546-fr6r6vccuu2nrl4k8f88m2lncm6c60cv.apps.googleusercontent.com"; // Вставьте Google Client ID сюда
 const ASSISTANT_NAME = "Fley";
 
