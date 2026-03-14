@@ -2720,34 +2720,6 @@ async function requestAirforceImage(payload) {
     prompt: payload?.prompt || "",
     aspectRatio: payload?.aspectRatio || "1:1"
   };
-
-  const directKeyReady = AIRFORCE_API_KEY && AIRFORCE_API_KEY !== "VITE_REPLACE_ME";
-  if (directKeyReady) {
-    try {
-      const directResponse = await fetchWithTimeout(
-        "https://api.airforce/v1/imagine",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${AIRFORCE_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: requestBody.model,
-            prompt: requestBody.prompt
-          })
-        },
-        REQUEST_TIMEOUT_MS + 15000
-      );
-      // Return direct response for normal API outcomes; fallback only for endpoint/cors-like failures.
-      if (directResponse.ok || ![404, 405].includes(directResponse.status)) {
-        return directResponse;
-      }
-    } catch (err) {
-      // Fallback to local proxy when direct request is blocked (CORS/network).
-    }
-  }
-
   return fetchWithTimeout(
     "/api/airforce-image",
     {
