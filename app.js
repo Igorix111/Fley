@@ -5,6 +5,8 @@ const AIRFORCE_API_KEY = "sk-air-RDQqozmszW5DmC9RM4gBKfed1oUVMwVQJKR46QgYxVhSl4q
 
 const AIRFORCE_IMAGE_MODEL = "grok-imagine";
 const REQUEST_TIMEOUT_MS = 30000;
+const IMAGE_LOAD_TIMEOUT_MS = 12000;
+const POLLINATIONS_FALLBACK_TIMEOUT_MS = 30000;
 
 const modelSelect = document.getElementById("model");
 const systemInput = document.getElementById("system");
@@ -2745,7 +2747,7 @@ function buildPollinationsFallbackUrls(prompt, ratio = "1:1") {
   ];
 }
 
-function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false } = {}) {
+function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false, timeoutMs = IMAGE_LOAD_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     if (lastImageObjectUrl && lastImageObjectUrl.startsWith("blob:")) {
       URL.revokeObjectURL(lastImageObjectUrl);
@@ -2759,13 +2761,37 @@ function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false } = {}) {
     image.decoding = "async";
     image.referrerPolicy = "no-referrer";
 
+    let settled = false;
+    const cleanup = () => {
+      image.onload = null;
+      image.onerror = null;
+      clearTimeout(timer);
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (isObjectUrl && imageUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(imageUrl);
+        if (lastImageObjectUrl === imageUrl) lastImageObjectUrl = "";
+      }
+      reject(new Error("Image load timeout"));
+    }, Math.max(2000, Number(timeoutMs) || IMAGE_LOAD_TIMEOUT_MS));
+
     image.onload = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       imageOutputEl.innerHTML = "";
       image.addEventListener("click", () => openImageModal(imageUrl, prompt));
       imageOutputEl.appendChild(image);
       resolve();
     };
     image.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       if (isObjectUrl && imageUrl.startsWith("blob:")) {
         URL.revokeObjectURL(imageUrl);
         if (lastImageObjectUrl === imageUrl) lastImageObjectUrl = "";
@@ -2778,9 +2804,13 @@ function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false } = {}) {
 
 async function tryPollinationsFallback(prompt, ratio = "1:1") {
   const urls = buildPollinationsFallbackUrls(prompt, ratio);
+  const startedAt = Date.now();
   for (const url of urls) {
+    if (Date.now() - startedAt > POLLINATIONS_FALLBACK_TIMEOUT_MS) {
+      break;
+    }
     try {
-      await renderGeneratedImage(url, prompt);
+      await renderGeneratedImage(url, prompt, { timeoutMs: 9000 });
       return true;
     } catch (err) {
       // Try the next fallback URL.
