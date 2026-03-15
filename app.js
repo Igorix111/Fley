@@ -6,7 +6,8 @@ const AIRFORCE_API_KEY = "sk-air-RDQqozmszW5DmC9RM4gBKfed1oUVMwVQJKR46QgYxVhSl4q
 const AIRFORCE_IMAGE_MODEL = "grok-imagine";
 const REQUEST_TIMEOUT_MS = 30000;
 const IMAGE_LOAD_TIMEOUT_MS = 12000;
-const POLLINATIONS_FALLBACK_TIMEOUT_MS = 30000;
+const IMAGE_DIRECT_LOAD_TIMEOUT_MS = 45000;
+const POLLINATIONS_FALLBACK_TIMEOUT_MS = 120000;
 
 const modelSelect = document.getElementById("model");
 const systemInput = document.getElementById("system");
@@ -121,6 +122,7 @@ let currentLang = "ru";
 let lastImageObjectUrl = null;
 let imageGenerationInFlight = false;
 let imageRetryAt = 0;
+let imageProxyUnavailable = false;
 let isChatRequestInFlight = false;
 let activeChatAbortController = null;
 let pendingAttachments = [];
@@ -2745,6 +2747,13 @@ function buildPollinationsFallbackUrls(prompt, ratio = "1:1") {
 function normalizeImageErrorMessage(value = "", fallback = "Image service error") {
   const raw = String(value || "").trim();
   if (!raw) return fallback;
+  const lowered = raw.toLowerCase();
+  if (lowered.includes("page could not be found") || lowered.includes("not_found")) {
+    return "Image API endpoint not found on hosting";
+  }
+  if (lowered.includes("image load timeout")) {
+    return "Image generator timeout";
+  }
   try {
     const parsed = JSON.parse(raw);
     if (typeof parsed.error === "string") return parsed.error;
@@ -2796,6 +2805,9 @@ async function requestImageFromApi(pathname, payload, timeoutMs = 50000) {
     const retryAfter = parseRetryAfterSeconds(response.headers.get("Retry-After"));
     if (!response.ok) {
       const raw = await response.text();
+      if (response.status === 404 && pathname.startsWith("/api/")) {
+        imageProxyUnavailable = true;
+      }
       return {
         ok: false,
         status: response.status || 502,
@@ -2838,6 +2850,9 @@ async function requestImageFromApi(pathname, payload, timeoutMs = 50000) {
 async function tryServerImageProviders(prompt, ratio = "1:1") {
   if (!(window.location.protocol === "http:" || window.location.protocol === "https:")) {
     return { ok: false, status: 0, retryAfter: 0, error: "Unsupported protocol for API call" };
+  }
+  if (imageProxyUnavailable) {
+    return { ok: false, status: 404, retryAfter: 0, error: "Image API endpoint not found on hosting" };
   }
 
   const attempts = [
@@ -2949,7 +2964,7 @@ async function tryPollinationsFallback(prompt, ratio = "1:1") {
       break;
     }
     try {
-      await renderGeneratedImage(url, prompt, { timeoutMs: 9000 });
+      await renderGeneratedImage(url, prompt, { timeoutMs: IMAGE_DIRECT_LOAD_TIMEOUT_MS });
       return { ok: true };
     } catch (err) {
       lastError = err?.message || "Pollinations fallback failed";
@@ -3005,10 +3020,10 @@ async function generateImage() {
       return;
     }
 
-    finalError = normalizeImageErrorMessage(
-      [finalError, directFallback.error].filter(Boolean).join(" | "),
-      t("image_status_error")
-    );
+    const onlyDirectError = normalizeImageErrorMessage(directFallback.error || "", "");
+    finalError = onlyDirectError
+      ? onlyDirectError
+      : normalizeImageErrorMessage(finalError, t("image_status_error"));
     finalStatus = Math.max(finalStatus, directFallback.status || 0);
     retryAfterSec = Math.max(retryAfterSec, directFallback.retryAfter || 0);
 
