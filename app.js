@@ -9,6 +9,10 @@ const IMAGE_LOAD_TIMEOUT_MS = 12000;
 const IMAGE_DIRECT_LOAD_TIMEOUT_MS = 60000;
 const POLLINATIONS_FALLBACK_TIMEOUT_MS = 90000;
 const ENABLE_IMAGE_PROXY = false;
+const GROQ_MODELS_CACHE_MS = 10 * 60 * 1000;
+const IMAGE_ATTACHMENT_MAX_SIDE = 1280;
+const IMAGE_ATTACHMENT_JPEG_QUALITY = 0.84;
+const IMAGE_ATTACHMENT_MAX_DATAURL_CHARS = 2_000_000;
 
 const modelSelect = document.getElementById("model");
 const systemInput = document.getElementById("system");
@@ -138,6 +142,8 @@ let lastHeroIndex = -1;
 const mobileSidebarQuery = window.matchMedia("(max-width: 900px)");
 let speechVoices = [];
 let userMemory = { name: "" };
+let cachedGroqModelIds = [];
+let groqModelsFetchedAt = 0;
 
 const HERO_VARIANTS = {
   ru: [
@@ -208,11 +214,11 @@ const I18N = {
     identity_user: "Пользователь: {user}.",
     memory_name_system: "Имя пользователя: {name}. Можешь обращаться по имени уместно, но не в каждом сообщении.",
     language_system: "Отвечай на русском языке. Если пользователь пишет на другом языке, отвечай на его языке.",
-    behavior_system: "Ты ассистент Fley. Отвечай как живой человек: естественно, понятно и без канцелярита. Пиши разговорно, но грамотно; без фраз в стиле робота и без шаблонных повторов. Если запрос неясный, задай один короткий уточняющий вопрос. Если пользователь пишет с матами, не обижайся: отвечай спокойно, уважительно и по делу, можно шутливо в мягкой форме. Не оскорбляй людей и не используй слишком грубую лексику. Не добавляй в ответ погоду, время, дату и самопредставление без прямого запроса.",
+    behavior_system: "Ты ассистент Fley. Отвечай как умный живой человек: сначала дай короткий прямой ответ, затем при необходимости добавь детали и примеры. Пиши естественно, без канцелярита и без повторов. Если запрос неясный, задай один короткий уточняющий вопрос. Если пользователь пишет с матами, не обижайся: отвечай спокойно, уважительно и по делу, можно с легким юмором. Не оскорбляй людей и не используй грубую лексику. Не добавляй погоду, время, дату и самопредставление без прямого запроса.",
     model_v1_label: "Fley v1 - быстрее",
     model_v2_label: "Fley v2 - умнее",
-    model_preset_v1: "Режим Fley v1: отвечай максимально быстро, коротко и по сути. Обычно 1-2 предложения без длинных объяснений.",
-    model_preset_v2: "Режим Fley v2: отвечай подробнее и глубже, объясняй как человек, добавляй полезный контекст и примеры без лишней воды.",
+    model_preset_v1: "Режим Fley v1: отвечай быстро и коротко. Обычно 1-3 предложения, только суть и четкий результат.",
+    model_preset_v2: "Режим Fley v2: отвечай глубже и качественнее, как сильный ассистент уровня ChatGPT: структурируй ответ, объясняй простым языком, добавляй полезные примеры и практические шаги без воды.",
     task_preset_general: "Профиль задач: Универсальный. Обычный режим: отвечай сбалансированно, ясно и по делу.",
     task_preset_code: "Профиль задач: Код. Давай решения для программирования: код-блоки, шаги, причины ошибок, улучшения и безопасные практики.",
     task_preset_study: "Профиль задач: Учёба. Объясняй простыми словами, структурируй по шагам, добавляй примеры и мини-проверку понимания.",
@@ -293,6 +299,7 @@ const I18N = {
     sources_title: "Источники",
     attached_files: "Прикрепленные файлы",
     files_ready: "Файлы добавлены: {count}",
+    vision_analyzing: "Анализирую изображение...",
     no_reply_to_speak: "Нет ответа для озвучки",
     export_done: "Экспорт готов"
   },
@@ -340,11 +347,11 @@ const I18N = {
     identity_user: "Користувач: {user}.",
     memory_name_system: "Ім'я користувача: {name}. Можеш звертатися на ім'я доречно, але не в кожній відповіді.",
     language_system: "Відповідай українською мовою. Якщо користувач пише іншою мовою, відповідай його мовою.",
-    behavior_system: "Ти асистент Fley. Відповідай як жива людина: природно, зрозуміло і без канцеляриту. Пиши розмовно, але грамотно; без роботизованих фраз і шаблонних повторів. Якщо запит нечіткий, постав одне коротке уточнювальне питання. Якщо користувач пише з лайкою, не ображайся: відповідай спокійно, шанобливо і по суті, можна жартівливо у м'якій формі. Не ображай людей і не використовуй занадто грубу лексику. Не додавай у відповідь погоду, час, дату і самопредставлення без прямого запиту.",
+    behavior_system: "Ти асистент Fley. Відповідай як розумна жива людина: спочатку дай коротку пряму відповідь, потім за потреби додай деталі та приклади. Пиши природно, без канцеляриту й повторів. Якщо запит нечіткий, постав одне коротке уточнювальне питання. Якщо користувач пише з лайкою, не ображайся: відповідай спокійно, шанобливо й по суті, можна з легким гумором. Не ображай людей і не використовуй грубу лексику. Не додавай погоду, час, дату і самопредставлення без прямого запиту.",
     model_v1_label: "Fley v1 - швидше",
     model_v2_label: "Fley v2 - розумніша",
-    model_preset_v1: "Режим Fley v1: відповідай максимально швидко, коротко і по суті. Зазвичай 1-2 речення без довгих пояснень.",
-    model_preset_v2: "Режим Fley v2: відповідай детальніше і глибше, пояснюй як людина, додавай корисний контекст і приклади без зайвої води.",
+    model_preset_v1: "Режим Fley v1: відповідай швидко і коротко. Зазвичай 1-3 речення, лише суть і чіткий результат.",
+    model_preset_v2: "Режим Fley v2: відповідай глибше і якісніше, як сильний асистент рівня ChatGPT: структуруй відповідь, пояснюй просто, додавай корисні приклади та практичні кроки без зайвої води.",
     task_preset_general: "Профіль задач: Універсальний. Звичайний режим: відповідай збалансовано, ясно і по суті.",
     task_preset_code: "Профіль задач: Код. Давай рішення для програмування: код-блоки, кроки, причини помилок, покращення і безпечні практики.",
     task_preset_study: "Профіль задач: Навчання. Пояснюй простими словами, структуруй по кроках, додавай приклади і міні-перевірку розуміння.",
@@ -425,6 +432,7 @@ const I18N = {
     sources_title: "Джерела",
     attached_files: "Прикріплені файли",
     files_ready: "Файли додано: {count}",
+    vision_analyzing: "Аналізую зображення...",
     no_reply_to_speak: "Немає відповіді для озвучення",
     export_done: "Експорт готовий"
   },
@@ -472,11 +480,11 @@ const I18N = {
     identity_user: "User: {user}.",
     memory_name_system: "User name: {name}. You may use the name when appropriate, but not in every reply.",
     language_system: "Respond in English. If the user writes in another language, reply in that same language.",
-    behavior_system: "You are Fley assistant. Reply like a real person: natural, clear, and non-robotic. Keep a conversational but polished tone; avoid repetitive stock phrases. If the request is ambiguous, ask one short clarifying question. If the user uses profanity, do not get offended: respond calmly, respectfully, and helpfully, with soft playful wording if appropriate. Do not insult people and do not use overly harsh language. Do not add weather, time/date, or self-introduction unless the user explicitly asks.",
+    behavior_system: "You are Fley assistant. Reply like a smart human: start with a short direct answer, then add details and examples when useful. Keep it natural, clear, and non-robotic; avoid repetitive template wording. If the request is ambiguous, ask one short clarifying question. If the user uses profanity, stay calm and respectful, and you may respond with soft humor. Do not insult people and do not use harsh language. Do not add weather, time/date, or self-introduction unless explicitly asked.",
     model_v1_label: "Fley v1 - faster",
     model_v2_label: "Fley v2 - smarter",
-    model_preset_v1: "Fley v1 mode: respond as fast as possible with short, direct answers. Usually 1-2 sentences and no long explanations.",
-    model_preset_v2: "Fley v2 mode: respond with more depth and clarity, explain like a human, and add useful context and examples without fluff.",
+    model_preset_v1: "Fley v1 mode: respond fast and concise. Usually 1-3 sentences with direct practical output.",
+    model_preset_v2: "Fley v2 mode: respond with stronger quality, similar to ChatGPT style: clear structure, simple explanations, useful examples, and actionable steps without fluff.",
     task_preset_general: "Task profile: General. Use normal balanced mode: clear and practical answers.",
     task_preset_code: "Task profile: Code. Prioritize programming help: code blocks, debugging steps, error causes, improvements, and safe practices.",
     task_preset_study: "Task profile: Study. Explain simply step-by-step with examples and a short understanding check.",
@@ -557,6 +565,7 @@ const I18N = {
     sources_title: "Sources",
     attached_files: "Attached files",
     files_ready: "Files added: {count}",
+    vision_analyzing: "Analyzing image...",
     no_reply_to_speak: "No reply to read",
     export_done: "Export ready"
   }
@@ -1670,6 +1679,83 @@ function loadWeatherCache() {
   }
 }
 
+function isImageAttachmentFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error || new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Image decode failed"));
+    image.src = dataUrl;
+  });
+}
+
+async function prepareImageAttachment(file) {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  if (!originalDataUrl.startsWith("data:image/")) {
+    return { dataUrl: "", width: 0, height: 0 };
+  }
+
+  try {
+    const image = await loadImageElement(originalDataUrl);
+    const sourceWidth = image.naturalWidth || image.width || 0;
+    const sourceHeight = image.naturalHeight || image.height || 0;
+    if (!sourceWidth || !sourceHeight) {
+      return { dataUrl: originalDataUrl, width: 0, height: 0 };
+    }
+
+    const maxSide = IMAGE_ATTACHMENT_MAX_SIDE;
+    const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+    const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+    const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+    if (scale >= 0.999 && originalDataUrl.length <= IMAGE_ATTACHMENT_MAX_DATAURL_CHARS) {
+      return { dataUrl: originalDataUrl, width: sourceWidth, height: sourceHeight };
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return { dataUrl: originalDataUrl, width: sourceWidth, height: sourceHeight };
+    }
+    ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    let dataUrl = canvas.toDataURL("image/jpeg", IMAGE_ATTACHMENT_JPEG_QUALITY);
+    if (dataUrl.length > IMAGE_ATTACHMENT_MAX_DATAURL_CHARS) {
+      const compactScale = Math.sqrt(IMAGE_ATTACHMENT_MAX_DATAURL_CHARS / dataUrl.length) * 0.95;
+      const compactWidth = Math.max(1, Math.round(targetWidth * compactScale));
+      const compactHeight = Math.max(1, Math.round(targetHeight * compactScale));
+      const compactCanvas = document.createElement("canvas");
+      compactCanvas.width = compactWidth;
+      compactCanvas.height = compactHeight;
+      const compactCtx = compactCanvas.getContext("2d");
+      if (compactCtx) {
+        compactCtx.drawImage(image, 0, 0, compactWidth, compactHeight);
+        dataUrl = compactCanvas.toDataURL("image/jpeg", Math.max(0.72, IMAGE_ATTACHMENT_JPEG_QUALITY - 0.1));
+        return { dataUrl, width: compactWidth, height: compactHeight };
+      }
+    }
+
+    return { dataUrl, width: targetWidth, height: targetHeight };
+  } catch {
+    return { dataUrl: originalDataUrl, width: 0, height: 0 };
+  }
+}
+
 async function handleFileSelection(fileList) {
   const files = Array.from(fileList || []).slice(0, 3);
   if (files.length === 0) return;
@@ -1690,8 +1776,18 @@ async function handleFileSelection(fileList) {
         item.excerpt = text.slice(0, 1800);
       } else if (item.type === "application/pdf" || /\.pdf$/i.test(item.name)) {
         item.excerpt = await extractPdfExcerpt(file);
-      } else if (item.type.startsWith("image/")) {
-        item.excerpt = `[image:${item.name}]`;
+      } else if (isImageAttachmentFile(file)) {
+        const preparedImage = await prepareImageAttachment(file);
+        item.dataUrl = preparedImage.dataUrl || "";
+        if (item.dataUrl.length > IMAGE_ATTACHMENT_MAX_DATAURL_CHARS) {
+          item.dataUrl = "";
+        }
+        item.width = preparedImage.width || 0;
+        item.height = preparedImage.height || 0;
+        const sizeHint = item.width && item.height ? ` ${item.width}x${item.height}` : "";
+        item.excerpt = item.dataUrl
+          ? `[image:${item.name}${sizeHint}]`
+          : `[image:${item.name}${sizeHint}] (preview too large for vision)`;
       }
     } catch (err) {
       item.excerpt = "";
@@ -1966,9 +2062,9 @@ function getModelPresetSystem(modelName) {
 
 function getModelResponseProfile(modelName) {
   if (isFleyV1Model(modelName)) {
-    return { temperature: 0.45, maxTokens: 220, topP: 0.9 };
+    return { temperature: 0.35, maxTokens: 320, topP: 0.9 };
   }
-  return { temperature: 0.85, maxTokens: 850, topP: 0.97 };
+  return { temperature: 0.62, maxTokens: 1200, topP: 0.92 };
 }
 
 function getLiveContext({ includeTime = false, includeWeather = false } = {}) {
@@ -2043,6 +2139,123 @@ function getFallbackModel(currentModel = getSelectedModel()) {
 function isModelError(message = "") {
   const lowered = message.toLowerCase();
   return lowered.includes("model") || lowered.includes("not found") || lowered.includes("unsupported");
+}
+
+function isVisionCapabilityError(message = "") {
+  const lowered = String(message || "").toLowerCase();
+  return (
+    lowered.includes("image_url") ||
+    lowered.includes("image input") ||
+    lowered.includes("vision") ||
+    lowered.includes("multimodal") ||
+    lowered.includes("text-only") ||
+    lowered.includes("does not support image")
+  );
+}
+
+function getVisionAttachments(attachments = []) {
+  return (attachments || [])
+    .filter((file) => isImageAttachmentFile(file) && typeof file.dataUrl === "string" && file.dataUrl.startsWith("data:image/"))
+    .slice(0, 2);
+}
+
+function buildUserMessageContent(baseText, attachments = []) {
+  const text = String(baseText || "").trim() || t("attached_files");
+  const visionFiles = getVisionAttachments(attachments);
+  if (visionFiles.length === 0) return text;
+  const parts = [{ type: "text", text }];
+  visionFiles.forEach((file) => {
+    parts.push({
+      type: "image_url",
+      image_url: { url: file.dataUrl }
+    });
+  });
+  return parts;
+}
+
+function normalizeModelIdList(modelIds = []) {
+  const unique = [];
+  const seen = new Set();
+  modelIds.forEach((modelId) => {
+    const value = String(modelId || "").trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    unique.push(value);
+  });
+  return unique;
+}
+
+function looksLikeVisionModelId(modelId = "") {
+  const lowered = String(modelId || "").toLowerCase();
+  return (
+    lowered.includes("vision") ||
+    lowered.includes("-vl") ||
+    lowered.includes("qwen") && lowered.includes("vl") ||
+    lowered.includes("llama-4-scout")
+  );
+}
+
+function getVisionModelScore(modelId = "") {
+  const lowered = String(modelId || "").toLowerCase();
+  let score = 0;
+  if (lowered.includes("90b") || lowered.includes("72b") || lowered.includes("70b")) score += 40;
+  if (lowered.includes("34b") || lowered.includes("27b")) score += 30;
+  if (lowered.includes("17b") || lowered.includes("13b")) score += 24;
+  if (lowered.includes("11b") || lowered.includes("8b")) score += 18;
+  if (lowered.includes("vision") || lowered.includes("-vl")) score += 12;
+  if (lowered.includes("scout")) score += 10;
+  return score;
+}
+
+async function fetchGroqModelIds() {
+  const now = Date.now();
+  if (cachedGroqModelIds.length > 0 && now - groqModelsFetchedAt < GROQ_MODELS_CACHE_MS) {
+    return cachedGroqModelIds;
+  }
+  try {
+    const response = await fetchWithTimeout(
+      "https://api.groq.com/openai/v1/models",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${API_KEY}`
+        }
+      },
+      20000
+    );
+    if (!response.ok) {
+      return cachedGroqModelIds;
+    }
+    const data = await response.json();
+    const modelIds = Array.isArray(data?.data) ? data.data.map((item) => item?.id).filter(Boolean) : [];
+    cachedGroqModelIds = normalizeModelIdList(modelIds);
+    groqModelsFetchedAt = Date.now();
+  } catch {
+    // Use cached list or static fallback.
+  }
+  return cachedGroqModelIds;
+}
+
+async function getVisionModelCandidates(selectedModel) {
+  const discovered = await fetchGroqModelIds();
+  const discoveredVision = discovered.filter((id) => looksLikeVisionModelId(id));
+  const sortedVision = [...discoveredVision].sort((a, b) => getVisionModelScore(b) - getVisionModelScore(a));
+  const preferredDiscovered = isFleyV1Model(selectedModel) ? [...sortedVision].reverse() : sortedVision;
+
+  const staticFallbacks = [
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "llama-3.2-90b-vision-preview",
+    "llama-3.2-11b-vision-preview",
+    "qwen/qwen2.5-vl-72b-instruct"
+  ];
+
+  return normalizeModelIdList([
+    looksLikeVisionModelId(selectedModel) ? selectedModel : "",
+    ...preferredDiscovered,
+    ...staticFallbacks,
+    selectedModel,
+    getFallbackModel(selectedModel)
+  ]);
 }
 
 function loadChats() {
@@ -2293,6 +2506,7 @@ async function sendMessage() {
 
   const baseText = text || t("attached_files");
   const attachmentContext = buildAttachmentContext();
+  const attachmentsForRequest = pendingAttachments.map((file) => ({ ...file }));
   const displayText = pendingAttachments.length
     ? `${baseText}\n📎 ${pendingAttachments.map((file) => file.name).join(", ")}`
     : baseText;
@@ -2336,7 +2550,8 @@ async function sendMessage() {
   setModelQuotaCount(model, usedForModel + 1);
   persistModelQuotaCounts();
   updateCounter();
-  setStatus(t("sending"));
+  const hasVisionInput = getVisionAttachments(attachmentsForRequest).length > 0;
+  setStatus(hasVisionInput ? t("vision_analyzing") : t("sending"));
 
   const liveContext = getLiveContext({
     includeTime: includeTimeContext,
@@ -2371,17 +2586,27 @@ async function sendMessage() {
     role: msg.role,
     content: msg.modelText || msg.text
   }));
+  if (historyMessages.length > 0 && historyMessages[historyMessages.length - 1].role === "user") {
+    historyMessages[historyMessages.length - 1] = {
+      role: "user",
+      content: buildUserMessageContent(modelText || baseText, attachmentsForRequest)
+    };
+  }
 
   const payloadBase = {
     messages: [...systemMessages, ...historyMessages]
   };
 
+  const modelCandidates = hasVisionInput
+    ? await getVisionModelCandidates(model)
+    : normalizeModelIdList([model, getFallbackModel(model)]);
+
   isChatRequestInFlight = true;
   activeChatAbortController = new AbortController();
   updateComposerActionButtons();
 
+  const responseProfile = getModelResponseProfile(model);
   const callGroq = async (modelName) => {
-    const profile = getModelResponseProfile(modelName);
     return fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -2392,34 +2617,34 @@ async function sendMessage() {
       body: JSON.stringify({
         ...payloadBase,
         model: modelName,
-        temperature: profile.temperature,
-        max_tokens: profile.maxTokens,
-        top_p: profile.topP
+        temperature: responseProfile.temperature,
+        max_tokens: responseProfile.maxTokens,
+        top_p: responseProfile.topP
       })
     });
   };
 
   try {
-    let response = await callGroq(model);
+    let response = null;
     let errorText = "";
+    let usedModel = model;
 
-    if (!response.ok) {
-      errorText = await response.text();
-      const fallback = getFallbackModel(model);
-      if (isModelError(errorText) && fallback && fallback !== model) {
-        if (fallback) {
-          setStatus(t("switching_model"), "warn");
-          modelSelect.value = fallback;
-          syncModelSwitchButtons();
-          updateCounter();
-          response = await callGroq(fallback);
-        }
+    for (const candidate of modelCandidates) {
+      if (!candidate) continue;
+      if (candidate !== modelCandidates[0]) {
+        setStatus(t("switching_model"), "warn");
       }
+      usedModel = candidate;
+      response = await callGroq(candidate);
+      if (response.ok) break;
+      errorText = await response.text();
+      const recoverable = isModelError(errorText) || (hasVisionInput && isVisionCapabilityError(errorText));
+      if (!recoverable) break;
     }
 
-    if (!response.ok) {
-      if (!errorText) errorText = await response.text();
-      const isLimit = response.status === 429;
+    if (!response || !response.ok) {
+      if (!errorText && response) errorText = await response.text();
+      const isLimit = response?.status === 429;
       setStatus(isLimit ? t("groq_limit_status") : t("api_error_status"), "error");
       const errorMessage = isLimit ? t("groq_limit_msg") : errorText || t("api_error_status");
       typingRow.remove();
@@ -2431,6 +2656,13 @@ async function sendMessage() {
     const data = await response.json();
     const answer = data.choices?.[0]?.message?.content?.trim() || t("no_reply");
     const finalAnswer = appendSources(answer, webResults);
+
+    if (!hasVisionInput && usedModel && usedModel !== model) {
+      modelSelect.value = usedModel;
+      syncModelSwitchButtons();
+      updateCounter();
+    }
+
     typingRow.remove();
     addMessage("assistant", finalAnswer, { append: true, scroll: true });
     current.messages.push({ role: "assistant", text: finalAnswer });
