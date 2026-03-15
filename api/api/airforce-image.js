@@ -178,15 +178,16 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const apiKey = (process.env.AIRFORCE_API_KEY || "").trim();
+  let payload = req.body;
+  if (typeof payload === "string") payload = parseJsonSafe(payload);
+  if (!payload || typeof payload !== "object") payload = {};
+
+  const bodyApiKey = String(payload.apiKey || payload.airforceApiKey || "").trim();
+  const apiKey = (process.env.AIRFORCE_API_KEY || bodyApiKey).trim();
   if (!apiKey) {
     res.status(400).send("Missing AIRFORCE_API_KEY");
     return;
   }
-
-  let payload = req.body;
-  if (typeof payload === "string") payload = parseJsonSafe(payload);
-  if (!payload || typeof payload !== "object") payload = {};
 
   const prompt = String(payload.prompt || "").trim();
   if (!prompt) {
@@ -210,4 +211,3 @@ module.exports = async (req, res) => {
   res.setHeader("Content-Type", result.contentType || "image/png");
   res.status(200).send(result.imageBuffer);
 };
-
