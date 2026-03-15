@@ -257,14 +257,14 @@ const I18N = {
     weather_error: "Ошибка загрузки",
     weather_error_status: "Ошибка погоды",
     image_need_key: "Нужен AIRFORCE_API_KEY в app.js или server.js.",
-    image_ready: "Готово к генерации через Grok Imagine (api.airforce).",
+    image_ready: "Готово к генерации изображений.",
     image_prompt_needed: "Введите описание изображения.",
     image_sending: "Генерируется",
     image_task_missing: "Не удалось получить taskId.",
     image_generating: "Генерация... (задача создана)",
     image_no_results: "Нет готовых изображений.",
     image_done: "Готово.",
-    image_limit: "Лимит Grok Imagine (api.airforce). Попробуйте позже.",
+    image_limit: "Сервис генерации временно недоступен. Попробуйте позже.",
     image_cooldown: "Слишком часто. Повторите через {sec} сек.",
     image_error: "Ошибка генерации: {message}",
     image_error_status: "Ошибка генерации",
@@ -389,14 +389,14 @@ const I18N = {
     weather_error: "Помилка завантаження",
     weather_error_status: "Помилка погоди",
     image_need_key: "Потрібен AIRFORCE_API_KEY у app.js або server.js.",
-    image_ready: "Готово до генерації через Grok Imagine (api.airforce).",
+    image_ready: "Готово до генерації зображень.",
     image_prompt_needed: "Введіть опис зображення.",
     image_sending: "Генерується",
     image_task_missing: "Не вдалося отримати taskId.",
     image_generating: "Генерація... (задача створена)",
     image_no_results: "Немає готових зображень.",
     image_done: "Готово.",
-    image_limit: "Ліміт Grok Imagine (api.airforce). Спробуйте пізніше.",
+    image_limit: "Сервіс генерації тимчасово недоступний. Спробуйте пізніше.",
     image_cooldown: "Занадто часто. Повторіть через {sec} с.",
     image_error: "Помилка генерації: {message}",
     image_error_status: "Помилка генерації",
@@ -521,14 +521,14 @@ const I18N = {
     weather_error: "Load error",
     weather_error_status: "Weather error",
     image_need_key: "Set AIRFORCE_API_KEY in app.js or server.js.",
-    image_ready: "Ready to generate via Grok Imagine (api.airforce).",
+    image_ready: "Ready to generate images.",
     image_prompt_needed: "Enter an image description.",
     image_sending: "Generating",
     image_task_missing: "Failed to get taskId.",
     image_generating: "Generating... (task created)",
     image_no_results: "No images returned.",
     image_done: "Done.",
-    image_limit: "Grok Imagine (api.airforce) limit reached. Try later.",
+    image_limit: "Image service is temporarily unavailable. Try again later.",
     image_cooldown: "Too many requests. Retry in {sec}s.",
     image_error: "Generation error: {message}",
     image_error_status: "Generation failed",
@@ -2890,6 +2890,16 @@ async function generateImage() {
 
   try {
     const ratio = imageRatioSelect.value || "1:1";
+
+    // Pollinations-first path for stability on public hosting.
+    const pollinationsFirstOk =
+      (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
+    if (pollinationsFirstOk) {
+      setImageStatusText(t("image_done"), false);
+      setStatus(t("status_ready"), "ok");
+      return;
+    }
+
     let response = await requestAirforceImage({
       prompt,
       aspectRatio: ratio,
