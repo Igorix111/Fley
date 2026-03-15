@@ -2747,6 +2747,43 @@ function buildPollinationsFallbackUrls(prompt, ratio = "1:1") {
   ];
 }
 
+function escapeForSvgText(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function buildLocalImageFallbackDataUrl(prompt, ratio = "1:1") {
+  const { width, height } = getImageDimensionsByRatio(ratio);
+  const title = escapeForSvgText((prompt || "Fley image").slice(0, 80));
+  const subtitle = escapeForSvgText("Fley fallback image");
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.8" cy="0.2" r="0.7">
+      <stop offset="0%" stop-color="#67e8f9" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#67e8f9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#bg)"/>
+  <rect width="100%" height="100%" fill="url(#glow)"/>
+  <g transform="translate(${Math.round(width * 0.08)} ${Math.round(height * 0.18)})">
+    <rect x="0" y="0" rx="18" ry="18" width="${Math.round(width * 0.84)}" height="${Math.round(height * 0.64)}" fill="rgba(255,255,255,0.06)" stroke="rgba(125,211,252,0.4)"/>
+    <text x="28" y="56" fill="#7dd3fc" font-size="26" font-family="Arial, sans-serif">Fley</text>
+    <text x="28" y="102" fill="#e2e8f0" font-size="30" font-family="Arial, sans-serif">${title}</text>
+    <text x="28" y="${Math.round(height * 0.64) - 24}" fill="#94a3b8" font-size="18" font-family="Arial, sans-serif">${subtitle}</text>
+  </g>
+</svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false, timeoutMs = IMAGE_LOAD_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     if (lastImageObjectUrl && lastImageObjectUrl.startsWith("blob:")) {
@@ -2816,7 +2853,13 @@ async function tryPollinationsFallback(prompt, ratio = "1:1") {
       // Try the next fallback URL.
     }
   }
-  return false;
+  try {
+    const localFallback = buildLocalImageFallbackDataUrl(prompt, ratio);
+    await renderGeneratedImage(localFallback, prompt, { timeoutMs: 2000 });
+    return true;
+  } catch (err) {
+    return false;
+  }
 }
 
 async function requestAirforceImage(payload) {
