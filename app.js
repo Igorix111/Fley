@@ -2732,23 +2732,61 @@ function buildPollinationsUrl(prompt, ratio = "1:1") {
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=flux&width=${width}&height=${height}&safe=true&nologo=true&enhance=false&seed=${seed}`;
 }
 
+function buildPollinationsFallbackUrls(prompt, ratio = "1:1") {
+  const { width, height } = getImageDimensionsByRatio(ratio);
+  const encodedPrompt = encodeURIComponent(prompt);
+  const seedA = Math.floor(Math.random() * 1_000_000_000);
+  const seedB = Math.floor(Math.random() * 1_000_000_000);
+  const seedC = Math.floor(Math.random() * 1_000_000_000);
+  return [
+    `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=${width}&height=${height}&safe=true&nologo=true&enhance=false&seed=${seedA}`,
+    `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&safe=true&nologo=true&enhance=false&seed=${seedB}`,
+    `https://image.pollinations.ai/prompt/${encodedPrompt}?model=sana&width=768&height=768&safe=true&nologo=true&enhance=false&seed=${seedC}`
+  ];
+}
+
 function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false } = {}) {
-  if (lastImageObjectUrl && lastImageObjectUrl.startsWith("blob:")) {
-    URL.revokeObjectURL(lastImageObjectUrl);
+  return new Promise((resolve, reject) => {
+    if (lastImageObjectUrl && lastImageObjectUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(lastImageObjectUrl);
+    }
+    lastImageObjectUrl = isObjectUrl ? imageUrl : "";
+
+    const image = document.createElement("img");
+    image.alt = t("image_alt");
+    image.classList.add("generated-image");
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.referrerPolicy = "no-referrer";
+
+    image.onload = () => {
+      imageOutputEl.innerHTML = "";
+      image.addEventListener("click", () => openImageModal(imageUrl, prompt));
+      imageOutputEl.appendChild(image);
+      resolve();
+    };
+    image.onerror = () => {
+      if (isObjectUrl && imageUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(imageUrl);
+        if (lastImageObjectUrl === imageUrl) lastImageObjectUrl = "";
+      }
+      reject(new Error("Image failed to load"));
+    };
+    image.src = imageUrl;
+  });
+}
+
+async function tryPollinationsFallback(prompt, ratio = "1:1") {
+  const urls = buildPollinationsFallbackUrls(prompt, ratio);
+  for (const url of urls) {
+    try {
+      await renderGeneratedImage(url, prompt);
+      return true;
+    } catch (err) {
+      // Try the next fallback URL.
+    }
   }
-  lastImageObjectUrl = isObjectUrl ? imageUrl : "";
-
-  const image = document.createElement("img");
-  image.src = imageUrl;
-  image.alt = t("image_alt");
-  image.classList.add("generated-image");
-  image.loading = "lazy";
-  image.decoding = "async";
-  image.referrerPolicy = "no-referrer";
-
-  imageOutputEl.innerHTML = "";
-  image.addEventListener("click", () => openImageModal(imageUrl, prompt));
-  imageOutputEl.appendChild(image);
+  return false;
 }
 
 async function requestAirforceImage(payload) {
@@ -2800,10 +2838,14 @@ async function generateImage() {
 
     // If proxy route is missing on host (404), fallback to direct free image URL.
     if (response.status === 404) {
-      const fallbackUrl = buildPollinationsUrl(prompt, ratio);
-      renderGeneratedImage(fallbackUrl, prompt);
-      setImageStatusText(t("image_done"), false);
-      setStatus(t("status_ready"), "ok");
+      const ok = await tryPollinationsFallback(prompt, ratio);
+      if (ok) {
+        setImageStatusText(t("image_done"), false);
+        setStatus(t("status_ready"), "ok");
+        return;
+      }
+      setImageStatusText(t("image_limit"), false);
+      setStatus(t("image_error_status"), "error");
       return;
     }
 
@@ -2833,6 +2875,14 @@ async function generateImage() {
           : isTemporaryServiceError
             ? t("image_limit")
           : t("image_error", { message: rawError || `HTTP ${response.status}` });
+      if (isLimit || isTemporaryServiceError) {
+        const ok = await tryPollinationsFallback(prompt, ratio);
+        if (ok) {
+          setImageStatusText(t("image_done"), false);
+          setStatus(t("status_ready"), "ok");
+          return;
+        }
+      }
       setImageStatusText(errorMessage, false);
       setStatus(t("image_error_status"), "error");
       return;
@@ -2841,12 +2891,13 @@ async function generateImage() {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.startsWith("image/")) {
       const rawError = (await response.text()).trim();
-      const fallbackUrl = buildPollinationsUrl(prompt, ratio);
       if (rawError.toLowerCase().includes("not found")) {
-        renderGeneratedImage(fallbackUrl, prompt);
-        setImageStatusText(t("image_done"), false);
-        setStatus(t("status_ready"), "ok");
-        return;
+        const ok = await tryPollinationsFallback(prompt, ratio);
+        if (ok) {
+          setImageStatusText(t("image_done"), false);
+          setStatus(t("status_ready"), "ok");
+          return;
+        }
       }
       setImageStatusText(t("image_error", { message: rawError || "Invalid image response" }), false);
       setStatus(t("image_error_status"), "error");
@@ -2855,16 +2906,20 @@ async function generateImage() {
 
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
-    renderGeneratedImage(objectUrl, prompt, { isObjectUrl: true });
+    await renderGeneratedImage(objectUrl, prompt, { isObjectUrl: true });
     setImageStatusText(t("image_done"), false);
     setStatus(t("status_ready"), "ok");
   } catch (err) {
     // Network/CORS failures fallback to direct free image URL.
     const ratio = imageRatioSelect.value || "1:1";
-    const fallbackUrl = buildPollinationsUrl(prompt, ratio);
-    renderGeneratedImage(fallbackUrl, prompt);
-    setImageStatusText(t("image_done"), false);
-    setStatus(t("status_ready"), "ok");
+    const ok = await tryPollinationsFallback(prompt, ratio);
+    if (ok) {
+      setImageStatusText(t("image_done"), false);
+      setStatus(t("status_ready"), "ok");
+    } else {
+      setImageStatusText(t("image_limit"), false);
+      setStatus(t("image_error_status"), "error");
+    }
   } finally {
     imageGenerationInFlight = false;
     if (generateImageBtn) generateImageBtn.disabled = false;
