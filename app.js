@@ -6,8 +6,9 @@ const AIRFORCE_API_KEY = "sk-air-RDQqozmszW5DmC9RM4gBKfed1oUVMwVQJKR46QgYxVhSl4q
 const AIRFORCE_IMAGE_MODEL = "grok-imagine";
 const REQUEST_TIMEOUT_MS = 30000;
 const IMAGE_LOAD_TIMEOUT_MS = 12000;
-const IMAGE_DIRECT_LOAD_TIMEOUT_MS = 45000;
-const POLLINATIONS_FALLBACK_TIMEOUT_MS = 120000;
+const IMAGE_DIRECT_LOAD_TIMEOUT_MS = 60000;
+const POLLINATIONS_FALLBACK_TIMEOUT_MS = 90000;
+const ENABLE_IMAGE_PROXY = false;
 
 const modelSelect = document.getElementById("model");
 const systemInput = document.getElementById("system");
@@ -122,7 +123,7 @@ let currentLang = "ru";
 let lastImageObjectUrl = null;
 let imageGenerationInFlight = false;
 let imageRetryAt = 0;
-let imageProxyUnavailable = false;
+let imageProxyUnavailable = !ENABLE_IMAGE_PROXY;
 let isChatRequestInFlight = false;
 let activeChatAbortController = null;
 let pendingAttachments = [];
@@ -2731,16 +2732,12 @@ function getImageDimensionsByRatio(ratio = "1:1") {
 }
 
 function buildPollinationsFallbackUrls(prompt, ratio = "1:1") {
-  const { width, height } = getImageDimensionsByRatio(ratio);
-  const encodedPrompt = encodeURIComponent(prompt);
-  const seedA = Math.floor(Math.random() * 1_000_000_000);
-  const seedB = Math.floor(Math.random() * 1_000_000_000);
-  const seedC = Math.floor(Math.random() * 1_000_000_000);
+  const ratioHint =
+    ratio === "3:2" ? " (wide 3:2 composition)" : ratio === "2:3" ? " (vertical 2:3 composition)" : "";
+  const encodedPrompt = encodeURIComponent(`${prompt}${ratioHint}`);
   return [
-    `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=${width}&height=${height}&safe=true&nologo=true&enhance=false&seed=${seedA}`,
-    `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&safe=true&nologo=true&enhance=false&seed=${seedB}`,
-    `https://image.pollinations.ai/prompt/${encodedPrompt}?model=sana&width=768&height=768&safe=true&nologo=true&enhance=false&seed=${seedC}`,
-    `https://image.pollinations.ai/prompt/${encodedPrompt}`
+    `https://image.pollinations.ai/prompt/${encodedPrompt}`,
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
   ];
 }
 
@@ -2848,6 +2845,9 @@ async function requestImageFromApi(pathname, payload, timeoutMs = 50000) {
 }
 
 async function tryServerImageProviders(prompt, ratio = "1:1") {
+  if (!ENABLE_IMAGE_PROXY) {
+    return { ok: false, status: 404, retryAfter: 0, error: "Image proxy disabled" };
+  }
   if (!(window.location.protocol === "http:" || window.location.protocol === "https:")) {
     return { ok: false, status: 0, retryAfter: 0, error: "Unsupported protocol for API call" };
   }
