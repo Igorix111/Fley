@@ -2890,99 +2890,19 @@ async function generateImage() {
 
   try {
     const ratio = imageRatioSelect.value || "1:1";
-
-    // Pollinations-first path for stability on public hosting.
-    const pollinationsFirstOk =
-      (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
-    if (pollinationsFirstOk) {
+    // Direct mode: no /api dependency to avoid 404 on static hosting.
+    const ok = await tryPollinationsFallback(prompt, ratio);
+    if (ok) {
       setImageStatusText(t("image_done"), false);
       setStatus(t("status_ready"), "ok");
       return;
     }
-
-    let response = await requestAirforceImage({
-      prompt,
-      aspectRatio: ratio,
-      model: AIRFORCE_IMAGE_MODEL
-    });
-
-    // If proxy route is missing on host (404), fallback to direct free image URL.
-    if (response.status === 404) {
-      const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
-      if (ok) {
-        setImageStatusText(t("image_done"), false);
-        setStatus(t("status_ready"), "ok");
-        return;
-      }
-      setImageStatusText(t("image_limit"), false);
-      setStatus(t("image_error_status"), "error");
-      return;
-    }
-
-    if (!response.ok) {
-      const rawError = (await response.text()).trim();
-      const missingKey =
-        response.status === 401 ||
-        response.status === 403 ||
-        /Missing AIRFORCE_API_KEY|invalid api key|unauthorized|forbidden/i.test(rawError);
-      const isLimit = response.status === 402 || response.status === 429;
-      const retryAfterHeader = Number.parseInt(response.headers.get("retry-after") || "0", 10);
-      const secFromHeader = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : 20;
-      if (response.status === 429 || response.status === 503) {
-        imageRetryAt = Date.now() + secFromHeader * 1000;
-      }
-      const normalizedError = rawError.toLowerCase();
-      const isTemporaryServiceError =
-        response.status >= 500 ||
-        normalizedError.includes("internal server error") ||
-        normalizedError.includes("fetch failed") ||
-        normalizedError.includes("upstream") ||
-        normalizedError.includes("rate limited");
-      const errorMessage = missingKey
-        ? t("image_need_key")
-        : isLimit
-          ? t("image_limit")
-          : isTemporaryServiceError
-            ? t("image_limit")
-          : t("image_error", { message: rawError || `HTTP ${response.status}` });
-      if (isLimit || isTemporaryServiceError) {
-        const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
-        if (ok) {
-          setImageStatusText(t("image_done"), false);
-          setStatus(t("status_ready"), "ok");
-          return;
-        }
-      }
-      setImageStatusText(errorMessage, false);
-      setStatus(t("image_error_status"), "error");
-      return;
-    }
-
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.startsWith("image/")) {
-      const rawError = (await response.text()).trim();
-      if (rawError.toLowerCase().includes("not found")) {
-        const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
-        if (ok) {
-          setImageStatusText(t("image_done"), false);
-          setStatus(t("status_ready"), "ok");
-          return;
-        }
-      }
-      setImageStatusText(t("image_error", { message: rawError || "Invalid image response" }), false);
-      setStatus(t("image_error_status"), "error");
-      return;
-    }
-
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    await renderGeneratedImage(objectUrl, prompt, { isObjectUrl: true });
-    setImageStatusText(t("image_done"), false);
-    setStatus(t("status_ready"), "ok");
+    setImageStatusText(t("image_limit"), false);
+    setStatus(t("image_error_status"), "error");
   } catch (err) {
-    // Network/CORS failures fallback to direct free image URL.
+    // Keep single fallback path for stability.
     const ratio = imageRatioSelect.value || "1:1";
-    const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
+    const ok = await tryPollinationsFallback(prompt, ratio);
     if (ok) {
       setImageStatusText(t("image_done"), false);
       setStatus(t("status_ready"), "ok");
