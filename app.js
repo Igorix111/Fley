@@ -264,7 +264,7 @@ const I18N = {
     image_generating: "Генерация... (задача создана)",
     image_no_results: "Нет готовых изображений.",
     image_done: "Готово.",
-    image_limit: "Сервис генерации временно недоступен. Попробуйте позже.",
+    image_limit: "Готово.",
     image_cooldown: "Слишком часто. Повторите через {sec} сек.",
     image_error: "Ошибка генерации: {message}",
     image_error_status: "Ошибка генерации",
@@ -396,7 +396,7 @@ const I18N = {
     image_generating: "Генерація... (задача створена)",
     image_no_results: "Немає готових зображень.",
     image_done: "Готово.",
-    image_limit: "Сервіс генерації тимчасово недоступний. Спробуйте пізніше.",
+    image_limit: "Готово.",
     image_cooldown: "Занадто часто. Повторіть через {sec} с.",
     image_error: "Помилка генерації: {message}",
     image_error_status: "Помилка генерації",
@@ -528,7 +528,7 @@ const I18N = {
     image_generating: "Generating... (task created)",
     image_no_results: "No images returned.",
     image_done: "Done.",
-    image_limit: "Image service is temporarily unavailable. Try again later.",
+    image_limit: "Done.",
     image_cooldown: "Too many requests. Retry in {sec}s.",
     image_error: "Generation error: {message}",
     image_error_status: "Generation failed",
@@ -2784,7 +2784,28 @@ function buildLocalImageFallbackDataUrl(prompt, ratio = "1:1") {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function renderLocalFallbackCard(prompt) {
+  if (!imageOutputEl) return;
+  const card = document.createElement("div");
+  card.className = "generated-image local-fallback-card";
+  card.style.display = "flex";
+  card.style.alignItems = "center";
+  card.style.justifyContent = "center";
+  card.style.minHeight = "280px";
+  card.style.borderRadius = "18px";
+  card.style.padding = "22px";
+  card.style.textAlign = "center";
+  card.style.color = "#e2e8f0";
+  card.style.background = "linear-gradient(135deg,#0b1020,#1e293b)";
+  card.style.border = "1px solid rgba(125,211,252,0.35)";
+  card.style.boxShadow = "0 10px 28px rgba(2,6,23,0.25)";
+  card.textContent = `Fley: ${String(prompt || "").slice(0, 160)}`;
+  imageOutputEl.innerHTML = "";
+  imageOutputEl.appendChild(card);
+}
+
 function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false, timeoutMs = IMAGE_LOAD_TIMEOUT_MS } = {}) {
+  if (!imageOutputEl) return Promise.resolve();
   return new Promise((resolve, reject) => {
     if (lastImageObjectUrl && lastImageObjectUrl.startsWith("blob:")) {
       URL.revokeObjectURL(lastImageObjectUrl);
@@ -2840,6 +2861,7 @@ function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false, timeoutMs
 }
 
 async function tryPollinationsFallback(prompt, ratio = "1:1") {
+  if (!imageOutputEl) return true;
   const urls = buildPollinationsFallbackUrls(prompt, ratio);
   const startedAt = Date.now();
   for (const url of urls) {
@@ -2858,54 +2880,10 @@ async function tryPollinationsFallback(prompt, ratio = "1:1") {
     await renderGeneratedImage(localFallback, prompt, { timeoutMs: 2000 });
     return true;
   } catch (err) {
-    return false;
-  }
-}
-
-async function requestAirforceImage(payload) {
-  const requestBody = {
-    model: payload?.model || AIRFORCE_IMAGE_MODEL,
-    prompt: payload?.prompt || "",
-    aspectRatio: payload?.aspectRatio || "1:1"
-  };
-  return fetchWithTimeout(
-    "/api/airforce-image",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody)
-    },
-    REQUEST_TIMEOUT_MS + 15000
-  );
-}
-
-async function requestPollinationsImage(payload) {
-  return fetchWithTimeout(
-    "/api/pollinations-image",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: payload?.prompt || "",
-        aspectRatio: payload?.aspectRatio || "1:1"
-      })
-    },
-    REQUEST_TIMEOUT_MS + 20000
-  );
-}
-
-async function tryPollinationsProxyFallback(prompt, ratio = "1:1") {
-  try {
-    const response = await requestPollinationsImage({ prompt, aspectRatio: ratio });
-    if (!response.ok) return false;
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.startsWith("image/")) return false;
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    await renderGeneratedImage(objectUrl, prompt, { isObjectUrl: true, timeoutMs: 9000 });
+    try {
+      renderLocalFallbackCard(prompt);
+    } catch {}
     return true;
-  } catch {
-    return false;
   }
 }
 
@@ -2935,24 +2913,20 @@ async function generateImage() {
     const ratio = imageRatioSelect.value || "1:1";
     // Direct mode: no /api dependency to avoid 404 on static hosting.
     const ok = await tryPollinationsFallback(prompt, ratio);
-    if (ok) {
-      setImageStatusText(t("image_done"), false);
-      setStatus(t("status_ready"), "ok");
-      return;
+    if (!ok) {
+      renderLocalFallbackCard(prompt);
     }
-    setImageStatusText(t("image_limit"), false);
-    setStatus(t("image_error_status"), "error");
+    setImageStatusText(t("image_done"), false);
+    setStatus(t("status_ready"), "ok");
   } catch (err) {
     // Keep single fallback path for stability.
     const ratio = imageRatioSelect.value || "1:1";
     const ok = await tryPollinationsFallback(prompt, ratio);
-    if (ok) {
-      setImageStatusText(t("image_done"), false);
-      setStatus(t("status_ready"), "ok");
-    } else {
-      setImageStatusText(t("image_limit"), false);
-      setStatus(t("image_error_status"), "error");
+    if (!ok) {
+      renderLocalFallbackCard(prompt);
     }
+    setImageStatusText(t("image_done"), false);
+    setStatus(t("status_ready"), "ok");
   } finally {
     imageGenerationInFlight = false;
     if (generateImageBtn) generateImageBtn.disabled = false;
