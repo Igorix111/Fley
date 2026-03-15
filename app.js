@@ -2836,6 +2836,36 @@ async function requestAirforceImage(payload) {
   );
 }
 
+async function requestPollinationsImage(payload) {
+  return fetchWithTimeout(
+    "/api/pollinations-image",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: payload?.prompt || "",
+        aspectRatio: payload?.aspectRatio || "1:1"
+      })
+    },
+    REQUEST_TIMEOUT_MS + 20000
+  );
+}
+
+async function tryPollinationsProxyFallback(prompt, ratio = "1:1") {
+  try {
+    const response = await requestPollinationsImage({ prompt, aspectRatio: ratio });
+    if (!response.ok) return false;
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.startsWith("image/")) return false;
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    await renderGeneratedImage(objectUrl, prompt, { isObjectUrl: true, timeoutMs: 9000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function generateImage() {
   if (imageGenerationInFlight) return;
   const now = Date.now();
@@ -2868,7 +2898,7 @@ async function generateImage() {
 
     // If proxy route is missing on host (404), fallback to direct free image URL.
     if (response.status === 404) {
-      const ok = await tryPollinationsFallback(prompt, ratio);
+      const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
       if (ok) {
         setImageStatusText(t("image_done"), false);
         setStatus(t("status_ready"), "ok");
@@ -2906,7 +2936,7 @@ async function generateImage() {
             ? t("image_limit")
           : t("image_error", { message: rawError || `HTTP ${response.status}` });
       if (isLimit || isTemporaryServiceError) {
-        const ok = await tryPollinationsFallback(prompt, ratio);
+        const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
         if (ok) {
           setImageStatusText(t("image_done"), false);
           setStatus(t("status_ready"), "ok");
@@ -2922,7 +2952,7 @@ async function generateImage() {
     if (!contentType.startsWith("image/")) {
       const rawError = (await response.text()).trim();
       if (rawError.toLowerCase().includes("not found")) {
-        const ok = await tryPollinationsFallback(prompt, ratio);
+        const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
         if (ok) {
           setImageStatusText(t("image_done"), false);
           setStatus(t("status_ready"), "ok");
@@ -2942,7 +2972,7 @@ async function generateImage() {
   } catch (err) {
     // Network/CORS failures fallback to direct free image URL.
     const ratio = imageRatioSelect.value || "1:1";
-    const ok = await tryPollinationsFallback(prompt, ratio);
+    const ok = (await tryPollinationsProxyFallback(prompt, ratio)) || (await tryPollinationsFallback(prompt, ratio));
     if (ok) {
       setImageStatusText(t("image_done"), false);
       setStatus(t("status_ready"), "ok");
