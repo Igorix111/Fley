@@ -2714,6 +2714,43 @@ function pickBestGeoResult(results, query) {
   return best;
 }
 
+function getImageDimensionsByRatio(ratio = "1:1") {
+  switch (ratio) {
+    case "3:2":
+      return { width: 1152, height: 768 };
+    case "2:3":
+      return { width: 768, height: 1152 };
+    case "1:1":
+    default:
+      return { width: 1024, height: 1024 };
+  }
+}
+
+function buildPollinationsUrl(prompt, ratio = "1:1") {
+  const { width, height } = getImageDimensionsByRatio(ratio);
+  const seed = Math.floor(Math.random() * 1_000_000_000);
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=flux&width=${width}&height=${height}&safe=true&nologo=true&enhance=false&seed=${seed}`;
+}
+
+function renderGeneratedImage(imageUrl, prompt, { isObjectUrl = false } = {}) {
+  if (lastImageObjectUrl && lastImageObjectUrl.startsWith("blob:")) {
+    URL.revokeObjectURL(lastImageObjectUrl);
+  }
+  lastImageObjectUrl = isObjectUrl ? imageUrl : "";
+
+  const image = document.createElement("img");
+  image.src = imageUrl;
+  image.alt = t("image_alt");
+  image.classList.add("generated-image");
+  image.loading = "lazy";
+  image.decoding = "async";
+  image.referrerPolicy = "no-referrer";
+
+  imageOutputEl.innerHTML = "";
+  image.addEventListener("click", () => openImageModal(imageUrl, prompt));
+  imageOutputEl.appendChild(image);
+}
+
 async function requestAirforceImage(payload) {
   const requestBody = {
     model: payload?.model || AIRFORCE_IMAGE_MODEL,
@@ -2755,11 +2792,20 @@ async function generateImage() {
 
   try {
     const ratio = imageRatioSelect.value || "1:1";
-    const response = await requestAirforceImage({
+    let response = await requestAirforceImage({
       prompt,
       aspectRatio: ratio,
       model: AIRFORCE_IMAGE_MODEL
     });
+
+    // If proxy route is missing on host (404), fallback to direct free image URL.
+    if (response.status === 404) {
+      const fallbackUrl = buildPollinationsUrl(prompt, ratio);
+      renderGeneratedImage(fallbackUrl, prompt);
+      setImageStatusText(t("image_done"), false);
+      setStatus(t("status_ready"), "ok");
+      return;
+    }
 
     if (!response.ok) {
       const rawError = (await response.text()).trim();
@@ -2795,33 +2841,30 @@ async function generateImage() {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.startsWith("image/")) {
       const rawError = (await response.text()).trim();
+      const fallbackUrl = buildPollinationsUrl(prompt, ratio);
+      if (rawError.toLowerCase().includes("not found")) {
+        renderGeneratedImage(fallbackUrl, prompt);
+        setImageStatusText(t("image_done"), false);
+        setStatus(t("status_ready"), "ok");
+        return;
+      }
       setImageStatusText(t("image_error", { message: rawError || "Invalid image response" }), false);
       setStatus(t("image_error_status"), "error");
       return;
     }
 
     const blob = await response.blob();
-    if (lastImageObjectUrl) {
-      URL.revokeObjectURL(lastImageObjectUrl);
-      lastImageObjectUrl = null;
-    }
-    lastImageObjectUrl = URL.createObjectURL(blob);
-
-    const image = document.createElement("img");
-    image.src = lastImageObjectUrl;
-    image.alt = t("image_alt");
-    image.classList.add("generated-image");
-    image.loading = "lazy";
-    image.decoding = "async";
-
-    imageOutputEl.innerHTML = "";
-    image.addEventListener("click", () => openImageModal(lastImageObjectUrl, prompt));
-    imageOutputEl.appendChild(image);
+    const objectUrl = URL.createObjectURL(blob);
+    renderGeneratedImage(objectUrl, prompt, { isObjectUrl: true });
     setImageStatusText(t("image_done"), false);
     setStatus(t("status_ready"), "ok");
   } catch (err) {
-    setImageStatusText(t("image_error", { message: err?.message || "Network error" }), false);
-    setStatus(t("image_error_status"), "error");
+    // Network/CORS failures fallback to direct free image URL.
+    const ratio = imageRatioSelect.value || "1:1";
+    const fallbackUrl = buildPollinationsUrl(prompt, ratio);
+    renderGeneratedImage(fallbackUrl, prompt);
+    setImageStatusText(t("image_done"), false);
+    setStatus(t("status_ready"), "ok");
   } finally {
     imageGenerationInFlight = false;
     if (generateImageBtn) generateImageBtn.disabled = false;
