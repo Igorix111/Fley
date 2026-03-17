@@ -1,7 +1,7 @@
 const API_KEY = "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"; // Вставьте ключ Groq сюда
 const GOOGLE_CLIENT_ID = "489570663546-fr6r6vccuu2nrl4k8f88m2lncm6c60cv.apps.googleusercontent.com"; // Вставьте Google Client ID сюда
 const ASSISTANT_NAME = "Fley";
-const AIRFORCE_API_KEY = "sk-air-RDQqozmszW5DmC9RM4gBKfed1oUVMwVQJKR46QgYxVhSl4qz5OJaNFg17IFnNlBS"; // Вставьте ключ Airforce сюда
+const AIRFORCE_API_KEY = "sk-air-w06gMRBdJvZ8lPr9rLjJjAI2HiWLF8Utb19WyRlcNrVSzMjjMS7ehtXuGXYKRauD"; // Вставьте ключ Airforce сюда
 
 const AIRFORCE_IMAGE_MODEL = "grok-imagine";
 const REQUEST_TIMEOUT_MS = 30000;
